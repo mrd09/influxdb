@@ -34,6 +34,15 @@ Collector2             --> Alerter
 • Telegraf - InfluxDB - Grafana
 ```
 
+### Components of the TICK Stack
+- The InfluxData Platform is built upon a set of open source projects — __Telegraf, InfluxDB, Chronograf, and Kapacitor__, which are collectively called the __TICK Stack__
+- The Open Source Time Series Platform provides services and functionality to accumulate, analyze, and act on time series data.
+- Each fulfills a specific role in managing your time-series data: 
+    + ***Telegraf***    - *Data collection*
+    + ***InfluxDB***    - *Data storage*
+    + ***Chronograf***  - *Data visualization*
+    + ***Kapacitor***   - *Data processing and events*
+
 ### Telegraf va Influxdb
 - Telegraf và Influxdb đều là sản phẩm của InfluxData, cả hai đều mà mã nguồn mở và được viết bởi Go. 
 - Mặc dù InfluxData cung cấp một stack hoàn chỉnh để monitor với Chronograf để visualize và Kapacitor để alerting (TICK stack) nhưng __chúng ta có thể sử dụng Grafana để thay thế cho cả Chronograf lẫn Kapacitor__.
@@ -45,6 +54,51 @@ https://www.influxdata.com/time-series-platform/telegraf/
 - Nó có thể tích hợp để collect nhiều loại nguồn dữ liệu khác nhau của metrics, events, và logs trực tiếp từ containers và system mà nó chạy trên đó. 
     - Nó cũng có thể pull metrics từ các third-party APIs, Kafka. 
     - Nó cũng có nhiều output plugin để gửi metrics thu thập được tới nhiều dạng datastores, services, message queues khác nhau như  InfluxDB, Graphite, OpenTSDB, Datadog, Librato, Kafka, ...
+
+##### Telegraf Metrics    
+- Telegraf metrics are the internal representation used to model data during processing. __These metrics are closely based on InfluxDB’s data model__ and contain __four main components__:
+    - __Measurement name__  : Description and namespace for the metric.
+    - __Tags__              : Key/Value string pairs and usually used to identify the metric.
+    - __Fields__            : Key/Value pairs that are typed and usually contain the metric data.
+    - __Timestamp__         : Date and time associated with the fields.
+
+- This __metric type exists only in memory and must be converted to a concrete representation in order to be transmitted or viewed__. 
+- Telegraf provides output data formats (also known as serializers) for these conversions. 
+- Telegraf’s default serializer converts to InfluxDB Line Protocol, which provides a high performance and one-to-one direct mapping from Telegraf metrics.
+
+##### Telegraf aggregator and processor plugins
+- Besides the input plugins and output plugins, Telegraf includes aggregator and processor plugins, which are used to aggregate and process metrics as they pass through Telegraf.
+```
+┌───────────┐
+│           │
+│    CPU    │───┐
+│           │   │
+└───────────┘   │
+                │
+┌───────────┐   │                                              ┌───────────┐
+│           │   │                                              │           │
+│  Memory   │───┤                                          ┌──▶│ InfluxDB  │
+│           │   │                                          │   │           │
+└───────────┘   │    ┌─────────────┐     ┌─────────────┐   │   └───────────┘
+                │    │             │     │Aggregate    │   │
+┌───────────┐   │    │Process      │     │ - mean      │   │   ┌───────────┐
+│           │   │    │ - transform │     │ - quantiles │   │   │           │
+│   MySQL   │───┼──▶ │ - decorate  │────▶│ - min/max   │───┼──▶│   File    │
+│           │   │    │ - filter    │     │ - count     │   │   │           │
+└───────────┘   │    │             │     │             │   │   └───────────┘
+                │    └─────────────┘     └─────────────┘   │
+┌───────────┐   │                                          │   ┌───────────┐
+│           │   │                                          │   │           │
+│   SNMP    │───┤                                          └──▶│   Kafka   │
+│           │   │                                              │           │
+└───────────┘   │                                              └───────────┘
+                │
+┌───────────┐   │
+│           │   │
+│  Docker   │───┘
+│           │
+└───────────┘
+```
 
 #### InfluxDB
 
@@ -61,3 +115,46 @@ https://www.influxdata.com/time-series-platform/influxdb/
 
     - Chúng ta có thể xem __measurement như là table trong sql có primary index luôn là time. tags và field là columns của table, tags được index còn field thì không__. 
     - Điểm khác biệt ở đây là __InfluxDB có thể có hàng triệu measurements, chúng ta không cần định nghĩa schemas trước__ và giá trị null không được lưu trữ.
+
+- InfluxDB show example:
+```
+$ influx -host 1.1.1.1 -port 8086
+Connected to http://1.1.1.1:8086 version 1.2.1
+InfluxDB shell version: 1.2.1
+
+> use telegraf
+Using database telegraf
+
+> SHOW measurements
+name: measurements
+name
+----
+cpu
+disk
+diskio
+haproxy
+kernel
+kernel_vmstat
+mem
+net
+net_response
+netstat
+nginx
+ping
+postgresql
+processes
+psql_state_connection
+psql_state_replication
+ssl
+stat_statement
+swap
+system
+
+> select * from cpu LIMIT 10
+name: cpu
+time                cpu       host            ip           time_guest time_guest_nice time_idle time_iowait time_irq time_nice time_softirq time_steal time_system time_user usage_guest usage_guest_nice usage_idle          usage_iowait        usage_irq usage_nice usage_softirq       usage_steal         usage_system       usage_user
+----                ---       ----            --           ---------- --------------- --------- ----------- -------- --------- ------------ ---------- ----------- --------- ----------- ---------------- ----------          ------------        --------- ---------- -------------       -----------         ------------       ----------
+1548033980000000000 cpu-total ip-1-1-1-1 1-1-1-1 0          0               5.31      0.73        0        0         0.03         5.09       6.3         3.11                                                                                                                                                           
+1548033980000000000 cpu0      ip-1-1-1-2  1-1-1-2  0          0               3.94      2.12        0        0         0.11         7.22       3.8         2.94                                                                                                                                                           
+1548033980000000000 cpu1      ip-1-1-1-2  1-1-1-2  0          0               5.49      2.02        0        0         0            7.38       3.93        2.7 
+```
